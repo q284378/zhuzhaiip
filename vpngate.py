@@ -462,6 +462,80 @@ def build_socks5_chains_text(data):
     return text
 
 
+def build_top5_outputs(data):
+    """从检测通过的可用节点中, 优先住宅节点, 按延迟升序筛选前 5 个最快节点。
+    生成:
+    1) top5_hosts.txt: 适用于 edgetunnel 后台「自定义优选IP」
+    2) top5_sub.txt: 纯 vless 节点明文
+    3) top5_sub64.txt: 标准 Base64 订阅链接 (适合 v2rayN 等直接订阅)
+    4) top5_socks5.txt: SOCKS5 链式代理格式
+    """
+    all_nodes = []
+    for cname, grp in data["countries"].items():
+        code = str(grp.get("code") or "?").upper()
+        zh = COUNTRY_ZH.get(code) or code
+        for n in grp["nodes"]:
+            all_nodes.append({
+                "code": code,
+                "zh": zh,
+                "host": n["host"],
+                "port": n["port"],
+                "latency_ms": n.get("latency_ms") or 999999,
+                "residential": n.get("residential", ""),
+                "speed_mbps": n.get("speed_mbps") or 0,
+            })
+
+    all_nodes.sort(key=lambda x: (
+        0 if x["residential"] == "residential" else 1,
+        x["latency_ms"],
+        -x["speed_mbps"],
+    ))
+
+    top5 = all_nodes[:5]
+
+    # 1. 链式代理 hosts 格式 (针对 edgetunnel 后台自定义优选IP)
+    hosts_lines = [
+        "# edgetunnel 前5最快节点 (自动测速优选，每 30 分钟自动更新)",
+        f"# 更新时间: {data['generated_at']}",
+        "# 可直接复制整段粘贴到 edgetunnel 后台「自定义优选IP」",
+        "# ========================================================",
+    ]
+    socks5_lines = [
+        "# edgetunnel 前5最快 SOCKS5 链式代理 (自动测速优选)",
+        f"# 更新时间: {data['generated_at']}",
+        "# ========================================================",
+    ]
+    vless_links = []
+
+    for i, n in enumerate(top5, 1):
+        res_str = "住宅" if n["residential"] == "residential" else "机房"
+        latency = f"{n['latency_ms']}ms" if n["latency_ms"] < 999999 else "ok"
+        name = f"Top{i}-{n['zh']}-{res_str}-{latency}"
+        
+        # hosts 格式: 域名:443#名字$sstp://...
+        hosts_lines.append(f"{EDT_DOMAIN}:443#{name}$sstp://vpn:vpn@{n['host']}:{n['port']}")
+        socks5_lines.append(f"{EDT_DOMAIN}:443#{name}$socks5://vpn:vpn@{n['host']}:{n['port']}")
+
+        # 完整 vless:// 节点
+        chain = {"type": "sstp", **_socks5_account(f"vpn:vpn@{n['host']}:{n['port']}", 443)}
+        chain_json = json.dumps(chain, separators=(",", ":"))
+        enc = _b64_secret_encode(chain_json, EDT_UUID)
+        path = quote("/video/" + enc, safe="")
+        link = (
+            f"vless://{EDT_UUID}@{EDT_DOMAIN}:443?security=tls&type=ws"
+            f"&host={EDT_DOMAIN}&fp={EDT_FINGERPRINT}&sni={EDT_DOMAIN}"
+            f"&path={path}&encryption=none#{quote(name, safe='')}"
+        )
+        vless_links.append(link)
+
+    hosts_content = "\n".join(hosts_lines) + "\n"
+    socks5_content = "\n".join(socks5_lines) + "\n"
+    sub_content = "\n".join(vless_links) + "\n"
+    sub64_content = base64.b64encode("\n".join(vless_links).encode("utf-8")).decode("ascii")
+
+    return hosts_content, socks5_content, sub_content, sub64_content
+
+
 # edgetunnel 入口地址池: 客户端直连 Cloudflare 的优选 IP:端口 (循环分配给每个国家节点当入口)
 # 可通过环境变量 EDGE_HOSTS 覆盖 (逗号分隔)
 EDGE_HOSTS = [
@@ -639,6 +713,24 @@ def write_outputs(data):
     socks5_chains_path = os.path.join(PUBLIC_DIR, "socks5_chains.txt")
     with open(socks5_chains_path, "w", encoding="utf-8") as f:
         f.write(build_socks5_chains_text(data))
+
+    # 前 5 速度最快节点文件 (自动选优)
+    top5_hosts, top5_socks5, top5_sub, top5_sub64 = build_top5_outputs(data)
+    top5_hosts_path = os.path.join(PUBLIC_DIR, "top5_hosts.txt")
+    with open(top5_hosts_path, "w", encoding="utf-8") as f:
+        f.write(top5_hosts)
+
+    top5_socks5_path = os.path.join(PUBLIC_DIR, "top5_socks5.txt")
+    with open(top5_socks5_path, "w", encoding="utf-8") as f:
+        f.write(top5_socks5)
+
+    top5_sub_path = os.path.join(PUBLIC_DIR, "top5_sub.txt")
+    with open(top5_sub_path, "w", encoding="utf-8") as f:
+        f.write(top5_sub)
+
+    top5_sub64_path = os.path.join(PUBLIC_DIR, "top5_sub64.txt")
+    with open(top5_sub64_path, "w", encoding="utf-8") as f:
+        f.write(top5_sub64)
 
     # 可直接粘贴进后台「自定义优选IP」框的清单 (入口地址#名字$sstp://...)
     hosts_path = os.path.join(PUBLIC_DIR, "hosts.txt")
