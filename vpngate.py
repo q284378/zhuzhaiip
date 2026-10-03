@@ -454,6 +454,14 @@ def build_chains_text(data):
     return "\n".join(lines) + "\n"
 
 
+def build_socks5_chains_text(data):
+    """生成 socks5 前缀的链式代理清单 (格式等同于 sstp 链式代理, 方便直接导入支持 socks5 标识的后台)。"""
+    text = build_chains_text(data)
+    text = text.replace("$sstp://", "$socks5://")
+    text = text.replace("SSTP 节点 -> edgetunnel 链式代理清单", "SOCKS5 链式代理清单 ($socks5://)")
+    return text
+
+
 # edgetunnel 入口地址池: 客户端直连 Cloudflare 的优选 IP:端口 (循环分配给每个国家节点当入口)
 # 可通过环境变量 EDGE_HOSTS 覆盖 (逗号分隔)
 EDGE_HOSTS = [
@@ -627,6 +635,11 @@ def write_outputs(data):
     with open(chains_path, "w", encoding="utf-8") as f:
         f.write(build_chains_text(data))
 
+    # socks5 格式链式代理清单 (针对部分需要 $socks5:// 标识的后台)
+    socks5_chains_path = os.path.join(PUBLIC_DIR, "socks5_chains.txt")
+    with open(socks5_chains_path, "w", encoding="utf-8") as f:
+        f.write(build_socks5_chains_text(data))
+
     # 可直接粘贴进后台「自定义优选IP」框的清单 (入口地址#名字$sstp://...)
     hosts_path = os.path.join(PUBLIC_DIR, "hosts.txt")
     with open(hosts_path, "w", encoding="utf-8") as f:
@@ -644,7 +657,7 @@ def write_outputs(data):
     sub64_path = os.path.join(PUBLIC_DIR, "sub64.txt")
     with open(sub64_path, "w", encoding="utf-8") as f:
         f.write(sub64_text)
-    return data_path, html_path, chains_path, hosts_path, sub_path, sub64_path
+    return data_path, html_path, chains_path, hosts_path, sub_path, sub64_path, socks5_chains_path
 
 
 # ---------------------------------------------------------------------------
@@ -696,10 +709,11 @@ def main():
     log("RESULT", f"可用节点: {len(success)}")
     log("RESULT", f"国家数量: {data['stats']['countries']}")
 
-    data_path, html_path, chains_path, hosts_path, sub_path, sub64_path = write_outputs(data)
+    data_path, html_path, chains_path, hosts_path, sub_path, sub64_path, socks5_chains_path = write_outputs(data)
     log("WEBSITE", f"生成 {os.path.relpath(data_path, REPO_DIR)}")
     log("WEBSITE", f"生成 {os.path.relpath(html_path, REPO_DIR)}")
     log("WEBSITE", f"生成 {os.path.relpath(chains_path, REPO_DIR)}")
+    log("WEBSITE", f"生成 {os.path.relpath(socks5_chains_path, REPO_DIR)}")
     log("WEBSITE", f"生成 {os.path.relpath(hosts_path, REPO_DIR)}")
     log("WEBSITE", f"生成 {os.path.relpath(sub_path, REPO_DIR)}")
     log("WEBSITE", f"生成 {os.path.relpath(sub64_path, REPO_DIR)}")
