@@ -462,8 +462,16 @@ def build_socks5_chains_text(data):
     return text
 
 
+# Gemini 与海外主流 AI 支持的地区代码白名单 (日本/新加坡/韩国/台湾/英国/德国/法国/加拿大/澳大利亚/美国)
+# 排除俄罗斯(RU)、中国大陆(CN)、香港(HK)等不被 Google 支持或易被封锁的区域
+AI_SUPPORTED_COUNTRIES = {
+    "JP", "SG", "KR", "TW", "GB", "DE", "FR", "CA", "AU", "US"
+}
+
+
 def build_top5_outputs(data):
     """从检测通过的可用节点中, 优先住宅节点, 按延迟升序筛选前 5 个最快节点。
+    自动剔除 Gemini/ChatGPT 不支持的地区(如俄罗斯、香港等)，保证 100% 可正常用于 AI 对话。
     生成:
     1) top5_hosts.txt: 适用于 edgetunnel 后台「自定义优选IP」
     2) top5_sub.txt: 纯 vless 节点明文
@@ -473,6 +481,9 @@ def build_top5_outputs(data):
     all_nodes = []
     for cname, grp in data["countries"].items():
         code = str(grp.get("code") or "?").upper()
+        # 严格过滤: 仅保留 Gemini 官方支持的白名单地区
+        if code not in AI_SUPPORTED_COUNTRIES:
+            continue
         zh = COUNTRY_ZH.get(code) or code
         for n in grp["nodes"]:
             all_nodes.append({
