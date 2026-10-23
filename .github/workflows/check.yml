@@ -1,9 +1,9 @@
 name: VPN Gate Node Check
 
 on:
-  # 定时检测: 每天 UTC 04:00 (北京时间中午 12:00) 运行一次
+  # 定时检测: 每 2 小时运行一次
   schedule:
-    - cron: "0 4 * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch:
   push:
     branches:
