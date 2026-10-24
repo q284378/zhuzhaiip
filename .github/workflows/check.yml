@@ -43,7 +43,7 @@ jobs:
           CHECK_TIMEOUT: "90"
 
       - name: Build Clash subscription (clash.yaml)
-              run: python to_clash.py
+        run: python to_clash.py
               
       - name: Ensure GitHub Pages is enabled (one-time auto setup)
         run: |
